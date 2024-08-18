@@ -436,7 +436,7 @@ class UnBBWrapper extends Loggable
             Node node = netWrapper.nodeList.get(indexNode);
             String nodeName = node.getName();
             ProbabilisticNode probabilisticNode = (ProbabilisticNode) node;
-            if (hardEvidences.containsKey(nodeName))
+            if (hardEvidences !=null && hardEvidences.containsKey(nodeName))
             {
                 //String node_name=(String) he;
                 String state_name= (String) hardEvidences.get(nodeName);
@@ -453,7 +453,7 @@ class UnBBWrapper extends Loggable
 
                 probabilisticNode.addFinding(indexState);
                 log_algo.fine("->state= " + state_name);
-            } else if (softEvidences.containsKey(nodeName))
+            } else if (softEvidences !=null && softEvidences.containsKey(nodeName))
             {
                 JSONObject likelihoods=(JSONObject)softEvidences.get(nodeName);
 
