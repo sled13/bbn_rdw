@@ -12,8 +12,12 @@ import unbbayes.util.extension.bn.inference.IInferenceAlgorithm;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.util.*;
 import java.util.logging.Logger;
+
+import org.json.simple.*;
+import org.json.simple.parser.*;
 
 class UnBBWrapper extends Loggable
 {
@@ -370,9 +374,12 @@ class UnBBWrapper extends Loggable
         }
      }
 
-    public static void main(String[] args) throws Exception
+    /**
+     * for test mostly!
+     * @param work_directory
+     */
+    private static void check_models_in_directory(String work_directory)
     {
-        String work_directory="C:\\projects\\radware\\UnBBayes\\Nets-avi\\Nets";
         File directory = new File(work_directory);
 
         File[] files = directory.listFiles();
@@ -388,6 +395,137 @@ class UnBBWrapper extends Loggable
                 unBBWrapper.defineConnectivityComponents( null);
             }
         }
+    }
+    public static void main(String[] args) throws Exception
+    {
+//        TODO: test 1
+//        String work_directory="C:\\projects\\radware\\UnBBayes\\Nets-avi\\Nets";
+//        check_models_in_directory(work_directory);
+
+        System.out.println("Test UnBBWrapper");
+        String cfg_file = args[0];
+        init(cfg_file);
+        log_algo.setUseParentHandlers(false);
+        log_algo.info("Test UnBBWrapper");
+        String ev_file=args[1];
+        log_algo.info(String.format("processing ev_file:%s", ev_file));
+
+        String modelFilePath = Util.getAndTrim("model_file", configuration);
+        String work_dir = Util.getAndTrim("work_dir", configuration);
+        JSONParser parser = new JSONParser();
+
+        UnBBWrapper netWrapper = new UnBBWrapper(modelFilePath);
+        Object obj = parser.parse(new FileReader(ev_file));
+        System.out.println(obj);
+        JSONObject jsonObject = (JSONObject) obj;
+        JSONObject evidences = (JSONObject)jsonObject.get("evidences");
+        System.out.println(evidences);
+        netWrapper.net.resetEvidences();
+        JSONObject hardEvidences=null;
+        JSONObject softEvidences =null;
+        if (evidences.containsKey("hard"))
+        {
+            hardEvidences =(JSONObject) evidences.get("hard");
+        }
+        if (evidences.containsKey("soft"))
+        {
+            softEvidences =(JSONObject) evidences.get("soft");
+        }
+        for (int indexNode = 0; indexNode < netWrapper.netSize; indexNode++)
+        {
+            Node node = netWrapper.nodeList.get(indexNode);
+            String nodeName = node.getName();
+            ProbabilisticNode probabilisticNode = (ProbabilisticNode) node;
+            if (hardEvidences.containsKey(nodeName))
+            {
+                //String node_name=(String) he;
+                String state_name= (String) hardEvidences.get(nodeName);
+                String msg = String.format("hard evidence: variable index=%d; '%s' => set state '%s'", indexNode, nodeName, state_name);
+                System.out.println(msg);
+                log_algo.info(msg);
+
+                //index2state.put(indexNode,state);//for generation
+                int indexState= UnBBWrapper.getStateIndex(node,state_name);
+                if( indexState<0)
+                {
+                    throw new RuntimeException(String.format("wrong state = '%s' for node = '%s'",state_name,nodeName));
+                }
+
+                probabilisticNode.addFinding(indexState);
+                log_algo.fine("->state= " + state_name);
+            } else if (softEvidences.containsKey(nodeName))
+            {
+                JSONObject likelihoods=(JSONObject)softEvidences.get(nodeName);
+
+                String msg = String.format("soft evidence: for variable index=%d; name=%s; likelihoods: %s", indexNode, nodeName, likelihoods);
+                System.out.println(msg);
+                log_algo.fine(msg);
+
+                int statesSize = probabilisticNode.getStatesSize();
+                float[] likelihood_arr=new float[statesSize];
+                Arrays.fill(likelihood_arr, 0.0F);
+                for(int ii=0;ii<statesSize; ii++)
+                {
+                    String state_name=probabilisticNode.getStateAt(ii);
+                    if (likelihoods.containsKey(state_name))
+                    {
+                        double prob = (double) likelihoods.get(state_name);
+                        likelihood_arr[ii] = (float) prob;
+                    }
+                }
+
+                probabilisticNode.addLikeliHood(likelihood_arr);
+                log_algo.fine("->likelihood_arr= " + likelihood_arr);
+            }
+        }
+
+        try
+        {
+            netWrapper.algorithm.propagate();
+        } catch (Exception exc)
+        {
+            Util.criticalError(exc.getMessage());
+        }
+
+        for (int indexNode = 0; indexNode < netWrapper.netSize; indexNode++)
+        {
+            Node node = netWrapper.nodeList.get(indexNode);
+            String name = node.getName();
+
+            NodeInfo nodeInfo = new NodeInfo(node);
+            NodeInfo priorNodeInfo = netWrapper.name2InfoPrior.get(name);
+            System.out.println("---current---"+nodeInfo);
+            System.out.println("---prior-----"+priorNodeInfo);
+            double max_abs_difference=0;
+            double min_abs_difference=0;
+            String state_max=null;
+            String state_min=null;
+            for (String state:nodeInfo.state2probability.keySet())
+            {
+                double p1=nodeInfo.state2probability.get(state);
+                double p2=priorNodeInfo.state2probability.get(state);
+                double delta=p2-p1;
+                if(  delta<min_abs_difference)
+                {
+                    min_abs_difference=delta;
+                    state_min=state;
+                }
+                if (delta>max_abs_difference)
+                {
+                    max_abs_difference=delta;
+                    state_max=state;
+                }
+
+
+            }
+            System.out.println(String.format("===diff=== max: %f (%s); min: %f (%s)", max_abs_difference,state_max,min_abs_difference,state_min));
+        }
+//        Map<Integer, UnBBWrapper.NodeInfo> diffMapInfoPost = UnBBWrapper.getDifferences(netWrapper, output_T_min_abs, output_T_min_rel, null, null);
+//        System.out.println(diffMapInfoPost);
+
+
 
     }
+
+
 }
