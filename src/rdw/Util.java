@@ -1,8 +1,10 @@
 package rdw;
 
-import java.io.File;
-import java.io.FilenameFilter;
-import java.io.IOException;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+
+import java.io.*;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -412,10 +414,6 @@ public class Util
         }
     }
 
-
-
-
-
     public static class WAvgStd
     {
         public double M1;
@@ -625,5 +623,59 @@ public class Util
             wAvgStd.calcState(true);
             System.out.println(wAvgStd+"\t"+wAvgStd.W);
         }
+    }
+
+    public static ArrayList<Map> parseEvJson(String ev_file) throws IOException, ParseException
+    {
+        JSONParser parser = new JSONParser();
+        Object obj = parser.parse(new FileReader(ev_file));
+        System.out.println(obj);
+        JSONObject jsonObject = (JSONObject) obj;
+        JSONObject evidences = (JSONObject)jsonObject.get("evidences");
+        System.out.println(evidences);
+        Map hardEvidences=null;
+        Map softEvidences =null;
+        if (evidences.containsKey("hard"))
+        {
+            hardEvidences =(JSONObject) evidences.get("hard");
+            for (Object obj1:hardEvidences.keySet())
+            {
+                String variableName=(String) obj1;
+                String state_name=(String) hardEvidences.get(variableName);
+                String msg = String.format("hard evidence: variable  '%s' => set state '%s'",  variableName, state_name);
+                System.out.println(msg);
+            }
+        }
+        if (evidences.containsKey("soft"))
+        {
+            softEvidences =(JSONObject) evidences.get("soft");
+            for (Object obj1:softEvidences.keySet())
+            {
+                String variableName = (String) obj1;
+                Map<String,Float> likelihoods=(JSONObject)softEvidences.get(variableName);
+                String msg = String.format("soft evidence: for variable  name=%s; likelihoods: %s",  variableName, likelihoods);
+                System.out.println(msg);
+
+            }
+
+        }
+        ArrayList<Map> res=new ArrayList<>();
+        res.add(hardEvidences);
+        res.add(softEvidences);
+        return res;
+    }
+
+    public static String map2str(Map map)
+    {
+        String res="";
+        for( Object obj:map.keySet())
+        {
+            if (res.length()>0)
+            {
+                res+=";";
+            }
+            res+= String.format("%s=%s", obj,map.get(obj));
+        }
+        return res;
     }
 }

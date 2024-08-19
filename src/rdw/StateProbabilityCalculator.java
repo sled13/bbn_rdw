@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Map;
 
+import static rdw.Util.map2str;
+import static rdw.Util.parseEvJson;
+
 public interface StateProbabilityCalculator
 {
     public static class HardEvidence
@@ -20,7 +23,12 @@ public interface StateProbabilityCalculator
         {
             _variable=variable;
             _state=state;
+        }
 
+        @Override
+        public String toString()
+        {
+            return String.format("'%s'=='%s'", _variable,_state);
         }
 
         public String getVariable(){return _variable;};
@@ -31,7 +39,13 @@ public interface StateProbabilityCalculator
         String _variable;
         Map _likelihoods;
 
-        public SoftEvidence(String variable,Map likelihoods)
+        @Override
+        public String toString()
+        {
+            return String.format("'%s==(%s)", _variable,map2str(_likelihoods));
+        }
+
+        public SoftEvidence(String variable, Map likelihoods)
         {
             _variable=variable;
             _likelihoods=likelihoods;
@@ -59,42 +73,22 @@ public interface StateProbabilityCalculator
         public Double getProbability(String state);
     }
 
-    public void setEvidences(ArrayList<HardEvidence> hardEvidences,ArrayList<SoftEvidence> softEvidences);
-    public Map<String,NodeInfo> getInfo();
-
+    public ArrayList<String> setEvidences(ArrayList<HardEvidence> hardEvidences,ArrayList<SoftEvidence> softEvidences);
+    public Map<String,NodeInfo> getInfo(int flag);
+    public static void printInfo(Map<String,NodeInfo> info)
+    {
+        for (String node_name:info.keySet())
+        {
+            System.out.println(String.format("'%s' -->>%s", node_name,info.get(node_name)));
+        }
+    }
     public static void main(String[] args) throws Exception
     {
         String ev_file=args[0];
-        JSONParser parser = new JSONParser();
-        Object obj = parser.parse(new FileReader(ev_file));
-        System.out.println(obj);
-        JSONObject jsonObject = (JSONObject) obj;
-        JSONObject evidences = (JSONObject)jsonObject.get("evidences");
-        System.out.println(evidences);
-        JSONObject hardEvidences=null;
-        JSONObject softEvidences =null;
-        if (evidences.containsKey("hard"))
-        {
-            hardEvidences =(JSONObject) evidences.get("hard");
-            for (Object obj1:hardEvidences.keySet())
-            {
-                String variableName=(String) obj1;
-                String state_name=(String) hardEvidences.get(variableName);
-                String msg = String.format("hard evidence: variable  '%s' => set state '%s'",  variableName, state_name);
-                System.out.println(msg);
-            }
-        }
-        if (evidences.containsKey("soft"))
-        {
-            softEvidences =(JSONObject) evidences.get("soft");
-            for (Object obj1:softEvidences.keySet())
-            {
-                String variableName = (String) obj1;
-                Map<String,Float> likelihoods=(JSONObject)softEvidences.get(variableName);
-                String msg = String.format("soft evidence: for variable  name=%s; likelihoods: %s",  variableName, likelihoods);
-                System.out.println(msg);
-
-            }
-        }
+        ArrayList<Map> res=parseEvJson(ev_file);
+        Map hardEvidences = res.get(0);
+        Map softEvidences = res.get(1);
+        System.out.println(String.format(">>>hardEvidences:%s", hardEvidences));
+        System.out.println(String.format(">>>softEvidences:%s", softEvidences));
      }
 }
