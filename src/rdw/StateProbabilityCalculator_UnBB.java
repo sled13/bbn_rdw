@@ -135,72 +135,78 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
             net.resetEvidences();
         }
         ArrayList<String> effectiveNodes= new ArrayList<>();
-        for (HardEvidence he:hardEvidences)
+        if(hardEvidences !=null)
         {
-             String variable=he._variable;
-            if (!name2index.containsKey(variable))
+            for (HardEvidence he : hardEvidences)
             {
-                throw new RuntimeException(String.format("unknown variable in : %s", he));
-            }
-            if(effectiveNodes.contains(variable))
-            {
-                   throw new RuntimeException(String.format("repeated variable in : %s", he));
-            }
-            int indexNode=name2index.get(variable);
-            //TODO: check state
-            String state= he._state;
-            Node node = nodeList.get(indexNode);
-            //String nodeName = node.getName();
-            ProbabilisticNode probabilisticNode = (ProbabilisticNode) node;
-            String msg = String.format("hard evidence: variable index=%d; '%s' => set state '%s'", indexNode, variable, state);
-            System.out.println(msg);
-            log_algo.info(msg);
-
-            int indexState= getStateIndex(node,state);
-            if( indexState<0)
-            {
-                throw new RuntimeException(String.format("wrong state = '%s' for node = '%s'",state,variable));
-            }
-            probabilisticNode.addFinding(indexState);
-            log_algo.fine("->state= " + state);
-            effectiveNodes.add(variable);
-        }
-        for (SoftEvidence se:softEvidences)
-        {
-            String variable=se._variable;
-            if (!name2index.containsKey(variable))
-            {
-                throw new RuntimeException(String.format("unknown variable in : %s", se));
-            }
-            if(effectiveNodes.contains(variable))
-            {
-              throw new RuntimeException(String.format("repeated variable in : %s", se));
-            }
-            int indexNode=name2index.get(variable);
-            //TODO: check state
-            Map likelihoods = se._likelihoods;
-            Node node = nodeList.get(indexNode);
-            ProbabilisticNode probabilisticNode = (ProbabilisticNode) node;
-            String msg = String.format("soft evidence: for variable index=%d; name=%s; likelihoods: %s", indexNode, variable, likelihoods);
-            System.out.println(msg);
-            log_algo.fine(msg);
-
-            int statesSize = probabilisticNode.getStatesSize();
-            float[] likelihood_arr=new float[statesSize];
-            Arrays.fill(likelihood_arr, 0.0F);
-            for(int ii=0;ii<statesSize; ii++)
-            {
-                String state_name = probabilisticNode.getStateAt(ii);
-                if (likelihoods.containsKey(state_name))
+                String variable = he._variable;
+                if (!name2index.containsKey(variable))
                 {
-                    double prob = (double) likelihoods.get(state_name);
-                    likelihood_arr[ii] = (float) prob;
+                    throw new RuntimeException(String.format("unknown variable in : %s", he));
                 }
-            }
-            probabilisticNode.addLikeliHood(likelihood_arr);
-            log_algo.fine("->likelihood_arr= " + likelihood_arr);
+                if (effectiveNodes.contains(variable))
+                {
+                    throw new RuntimeException(String.format("repeated variable in : %s", he));
+                }
+                int indexNode = name2index.get(variable);
+                //TODO: check state
+                String state = he._state;
+                Node node = nodeList.get(indexNode);
+                //String nodeName = node.getName();
+                ProbabilisticNode probabilisticNode = (ProbabilisticNode) node;
+                String msg = String.format("hard evidence: variable index=%d; '%s' => set state '%s'", indexNode, variable, state);
+                System.out.println(msg);
+                log_algo.info(msg);
 
-            effectiveNodes.add(variable);
+                int indexState = getStateIndex(node, state);
+                if (indexState < 0)
+                {
+                    throw new RuntimeException(String.format("wrong state = '%s' for node = '%s'", state, variable));
+                }
+                probabilisticNode.addFinding(indexState);
+                log_algo.fine("->state= " + state);
+                effectiveNodes.add(variable);
+            }
+        }
+        if (softEvidences !=null)
+        {
+            for (SoftEvidence se : softEvidences)
+            {
+                String variable = se._variable;
+                if (!name2index.containsKey(variable))
+                {
+                    throw new RuntimeException(String.format("unknown variable in : %s", se));
+                }
+                if (effectiveNodes.contains(variable))
+                {
+                    throw new RuntimeException(String.format("repeated variable in : %s", se));
+                }
+                int indexNode = name2index.get(variable);
+                //TODO: check state
+                Map likelihoods = se._likelihoods;
+                Node node = nodeList.get(indexNode);
+                ProbabilisticNode probabilisticNode = (ProbabilisticNode) node;
+                String msg = String.format("soft evidence: for variable index=%d; name=%s; likelihoods: %s", indexNode, variable, likelihoods);
+                System.out.println(msg);
+                log_algo.fine(msg);
+
+                int statesSize = probabilisticNode.getStatesSize();
+                float[] likelihood_arr = new float[statesSize];
+                Arrays.fill(likelihood_arr, 0.0F);
+                for (int ii = 0; ii < statesSize; ii++)
+                {
+                    String state_name = probabilisticNode.getStateAt(ii);
+                    if (likelihoods.containsKey(state_name))
+                    {
+                        double prob = (double) likelihoods.get(state_name);
+                        likelihood_arr[ii] = (float) prob;
+                    }
+                }
+                probabilisticNode.addLikeliHood(likelihood_arr);
+                log_algo.fine("->likelihood_arr= " + likelihood_arr);
+
+                effectiveNodes.add(variable);
+            }
         }
         try
         {
@@ -453,25 +459,50 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
 //        TODO: test 1
 //        String work_directory="C:\\projects\\radware\\UnBBayes\\Nets-avi\\Nets";
 //        check_models_in_directory(work_directory);
-
+        //C:\\data\\radware\\bbn_work\\ev_get_priory_selected_without_filtration.json
+        //C:\\data\\radware\\bbn_work\\ev_get_priory_all_without_filtration.json
+        //C:\\data\\radware\\bbn_work\\ev_test.json
         System.out.println("Test StateProbabilityCalculator_UnBB");
         String cfg_file = args[0];
         init(cfg_file);
         log_algo.setUseParentHandlers(false);
         log_algo.info("Test StateProbabilityCalculator_UnBB");
-        String ev_file = args[1];
-        log_algo.info(String.format("processing ev_file:%s", ev_file));
-
-        String modelFilePath = Util.getAndTrim("model_file", configuration);
-        String work_dir = Util.getAndTrim("work_dir", configuration);
-        StateProbabilityCalculator prob_calc=new StateProbabilityCalculator_UnBB(modelFilePath);
         int show_flag = SHOW_NAME | SHOW_DESCRIPTION | SHOW_EXPLANATION;
-
-        processInputFile(ev_file, prob_calc, show_flag);
+        String modelFilePath = Util.getAndTrim("model_file", configuration);
+        StateProbabilityCalculator prob_calc = new StateProbabilityCalculator_UnBB(modelFilePath);
+        if (args.length>1)
+        {
+            String ev_file = args[1];
+            log_algo.info(String.format("processing one file: ev_file:%s", ev_file));
+            processInputFile(ev_file, prob_calc, show_flag);
+        }
+        else
+        {
+            String work_dir = Util.getAndTrim("work_dir", configuration);
+            processAllInputFiles(work_dir,prob_calc, show_flag);
+        }
 
     }
 
+    private static void processAllInputFiles(String work_dir, StateProbabilityCalculator prob_calc, int show_flag) throws IOException, ParseException
+    {
+        String PREF_EV = "ev_";
+        String SUFFIX= ".json";
 
+        log_algo.info(String.format("processing all input files in directory::%s", work_dir));
+        File directory = new File(work_dir);
+        Util.FilenameFilterPrefSuf filenameFilterPrefSuf = new Util.FilenameFilterPrefSuf(PREF_EV, SUFFIX);
+        String[] fileNames = directory.list(filenameFilterPrefSuf);
+        for (String evidenceFileName : fileNames)
+        {
+            System.out.println("+++++++++++++++++++++++++++");
+            String inFilePath = work_dir + File.separator + evidenceFileName;
+            processInputFile(inFilePath, prob_calc, show_flag);
+            String msg = String.format("processed input file:%s", inFilePath);
+            log_algo.info(msg);
+            System.out.println("====================="+msg);
+        }
+    }
 
 
 }

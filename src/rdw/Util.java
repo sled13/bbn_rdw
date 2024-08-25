@@ -628,50 +628,58 @@ public class Util
     public static ArrayList<Map> parseEvJson(String ev_file) throws IOException, ParseException
     {
         System.out.println(String.format("----parsing file:%s", ev_file));
+        ArrayList<Map> res = new ArrayList<>();
 
         JSONParser parser = new JSONParser();
-        Object obj = parser.parse(new FileReader(ev_file));
-        System.out.println(obj);
-        JSONObject jsonObject = (JSONObject) obj;
-        JSONObject evidences = (JSONObject)jsonObject.get("evidences");
-        System.out.println(evidences);
+        JSONObject jsonObject = (JSONObject)parser.parse(new FileReader(ev_file));
         Map hardEvidences=null;
         Map softEvidences =null;
         Map targets=null;
         Map defaults =null;
-        if (evidences.containsKey("hard"))
+        System.out.println(jsonObject);
+        if (jsonObject.size()>0)
         {
-            hardEvidences =(JSONObject) evidences.get("hard");
-            for (Object obj1:hardEvidences.keySet())
+            if(jsonObject.containsKey("evidences"))
             {
-                String variableName=(String) obj1;
-                String state_name=(String) hardEvidences.get(variableName);
-                String msg = String.format("hard evidence: variable  '%s' => set state '%s'",  variableName, state_name);
-                System.out.println(msg);
+            JSONObject evidences = (JSONObject) jsonObject.get("evidences");
+            System.out.println(evidences);
+
+            if (evidences.containsKey("hard"))
+            {
+                hardEvidences = (JSONObject) evidences.get("hard");
+                for (Object obj1 : hardEvidences.keySet())
+                {
+                    String variableName = (String) obj1;
+                    String state_name = (String) hardEvidences.get(variableName);
+                    String msg = String.format("hard evidence: variable  '%s' => set state '%s'", variableName, state_name);
+                    System.out.println(msg);
+                }
             }
-        }
-        if (evidences.containsKey("soft"))
-        {
-            softEvidences =(JSONObject) evidences.get("soft");
-            for (Object obj1:softEvidences.keySet())
+            if (evidences.containsKey("soft"))
             {
-                String variableName = (String) obj1;
-                Map<String,Float> likelihoods=(JSONObject)softEvidences.get(variableName);
-                String msg = String.format("soft evidence: for variable  name=%s; likelihoods: %s",  variableName, likelihoods);
-                System.out.println(msg);
+                softEvidences = (JSONObject) evidences.get("soft");
+                for (Object obj1 : softEvidences.keySet())
+                {
+                    String variableName = (String) obj1;
+                    Map<String, Float> likelihoods = (JSONObject) softEvidences.get(variableName);
+                    String msg = String.format("soft evidence: for variable  name=%s; likelihoods: %s", variableName, likelihoods);
+                    System.out.println(msg);
+
+                }
+            }
 
             }
+            if (jsonObject.containsKey("targets"))
+            {
+                targets = (JSONObject) jsonObject.get("targets");
+            }
+            if (jsonObject.containsKey("defaults"))
+            {
+                defaults = (JSONObject) jsonObject.get("defaults");
+            }
+
 
         }
-        if (jsonObject.containsKey("targets"))
-        {
-            targets=(JSONObject)jsonObject.get("targets");
-        }
-        if (jsonObject.containsKey("defaults"))
-        {
-            defaults=(JSONObject)jsonObject.get("defaults");
-        }
-        ArrayList<Map> res=new ArrayList<>();
         res.add(hardEvidences);
         res.add(softEvidences);
         res.add(targets);
