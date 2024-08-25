@@ -627,6 +627,8 @@ public class Util
 
     public static ArrayList<Map> parseEvJson(String ev_file) throws IOException, ParseException
     {
+        System.out.println(String.format("----parsing file:%s", ev_file));
+
         JSONParser parser = new JSONParser();
         Object obj = parser.parse(new FileReader(ev_file));
         System.out.println(obj);
@@ -635,6 +637,8 @@ public class Util
         System.out.println(evidences);
         Map hardEvidences=null;
         Map softEvidences =null;
+        Map targets=null;
+        Map defaults =null;
         if (evidences.containsKey("hard"))
         {
             hardEvidences =(JSONObject) evidences.get("hard");
@@ -659,9 +663,23 @@ public class Util
             }
 
         }
+        if (jsonObject.containsKey("targets"))
+        {
+            targets=(JSONObject)jsonObject.get("targets");
+        }
+        if (jsonObject.containsKey("defaults"))
+        {
+            defaults=(JSONObject)jsonObject.get("defaults");
+        }
         ArrayList<Map> res=new ArrayList<>();
         res.add(hardEvidences);
         res.add(softEvidences);
+        res.add(targets);
+        res.add(defaults);
+        System.out.println(String.format(">>>hardEvidences:%s", hardEvidences));
+        System.out.println(String.format(">>>softEvidences:%s", softEvidences));
+        System.out.println(String.format(">>>targets:%s", targets));
+        System.out.println(String.format(">>>defaults:%s", defaults));
         return res;
     }
 

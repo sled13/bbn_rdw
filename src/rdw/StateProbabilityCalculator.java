@@ -73,8 +73,9 @@ public interface StateProbabilityCalculator
         public Double getProbability(String state);
     }
 
-    public ArrayList<String> setEvidences(ArrayList<HardEvidence> hardEvidences,ArrayList<SoftEvidence> softEvidences);
-    public Map<String,NodeInfo> getInfo(int flag);
+    public ArrayList<String> setEvidences(ArrayList<HardEvidence> hardEvidences,ArrayList<SoftEvidence> softEvidences,
+                                          boolean reset_before);
+    public Map<String,NodeInfo> getInfo(int flag,boolean reset_before);
     public static void printInfo(Map<String,NodeInfo> info)
     {
         for (String node_name:info.keySet())

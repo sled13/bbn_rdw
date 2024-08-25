@@ -1,7 +1,6 @@
 package rdw;
 
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 import unbbayes.io.BaseIO;
 import unbbayes.io.NetIO;
 import unbbayes.prs.Node;
@@ -12,8 +11,8 @@ import unbbayes.prs.bn.ProbabilisticNetwork;
 
 
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
-import java.util.logging.Logger;
 
 
 import unbbayes.prs.bn.ProbabilisticNode;
@@ -126,10 +125,15 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
     }
 
     @Override
-    public ArrayList<String> setEvidences(ArrayList<HardEvidence> hardEvidences,ArrayList<SoftEvidence> softEvidences)
+    public ArrayList<String> setEvidences(ArrayList<HardEvidence> hardEvidences,ArrayList<SoftEvidence> softEvidences,
+                                          boolean reset_before)
     {
         System.out.println(hardEvidences);
         System.out.println(softEvidences);
+        if(reset_before)
+        {
+            net.resetEvidences();
+        }
         ArrayList<String> effectiveNodes= new ArrayList<>();
         for (HardEvidence he:hardEvidences)
         {
@@ -210,7 +214,7 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
     }
 
     @Override
-    public Map<String, NodeInfo> getInfo(int flag)
+    public Map<String, NodeInfo> getInfo(int flag,boolean reset_before)
     {
         Map<String, NodeInfo> name2Info=new TreeMap<>();
         nodeList = net.getNodes();
@@ -256,8 +260,167 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
         }
         netSize = nodeList.size();
     }
+    //TODO: Not for the interface. For testing mostly
+    /*public void save(String outFile) throws FileNotFoundException
+    {
+       new NetIO().save(new File(outFile), net);
+    }*/
 
     //------private
+
+
+//----------------------------------private methods----------------------------------
+
+    private static void processInputFile(String ev_file, StateProbabilityCalculator prob_calc, int show_flag) throws IOException, ParseException
+    {
+        ArrayList<Map> res=parseEvJson(ev_file);
+        Map hardEvidences = res.get(0);
+        Map softEvidences = res.get(1);
+        Map targets=res.get(2);
+        Map defaults =res.get(3);
+
+
+        Map<String, NodeInfo> priori_info = prob_calc.getInfo(show_flag,true);
+        System.out.println("----priori_info--------------------");
+        StateProbabilityCalculator.printInfo(priori_info);
+        ArrayList<HardEvidence> hardEvidences_arr = getHardEvidencesFromMap(hardEvidences);
+        ArrayList<SoftEvidence> softEvidences_arr=getSoftEvidencesFromMap(softEvidences);
+        ArrayList<String> effectiveNodes = prob_calc.setEvidences(hardEvidences_arr, softEvidences_arr,false);
+        System.out.println(String.format("effectiveNodes: %s", effectiveNodes));
+
+        Map<String, NodeInfo> posterior_info = prob_calc.getInfo(show_flag,false);
+        System.out.println("----posterior_info--------------------");
+        StateProbabilityCalculator.printInfo(posterior_info);
+
+        Set target_nodes_names=null;
+        if (targets!=null)
+        {
+            target_nodes_names=targets.keySet();
+        }
+        else
+        {
+            target_nodes_names=priori_info.keySet();
+        }
+        Map<String,Map<String,Double>>result = new TreeMap<>();
+        Double default_abs_th=null;
+        Double default_rel_th=null;
+        if (defaults !=null)
+        {
+            if (defaults.containsKey("abs_th") && defaults.get("abs_th") != null)
+            {
+                default_abs_th = (Double) defaults.get("abs_th") ;
+            }
+            if (defaults.containsKey("rel_th") && defaults.get("abs_th") != null)
+            {
+                default_rel_th= (Double) defaults.get("rel_th") ;
+            }
+        }
+        for (Object obj:target_nodes_names)
+        {
+            Map<String,Double> result_for_target=new TreeMap<>();
+            String names=(String)obj;
+            NodeInfo nodeInfo = posterior_info.get(names);
+            NodeInfo priorNodeInfo = priori_info.get(names);
+            log_algo.info("---current---" + nodeInfo);
+            log_algo.info("---prior-----" + priorNodeInfo);
+            Map<String, Double> state2probability = priorNodeInfo.getStatesProbabilities();
+            if (targets==null ||targets.get(names)==null)
+            {
+                for (String state : state2probability.keySet())
+                {
+                    updateTargetResult(state, nodeInfo, default_rel_th, default_abs_th, result_for_target, state2probability);
+                }
+            }
+            else
+            {
+
+                Map target=(Map) targets.get(names);
+                for(Object obj1:target.keySet())
+                {
+                    String state=(String) obj1;
+                    Double abs_th=default_abs_th;
+                    Double rel_th=default_rel_th;
+                    Map state_data=(Map)target.get(state);
+                    if(state_data!=null && state_data.containsKey("abs_th")&&state_data.get("abs_th")!=null)
+                    {
+                        abs_th=(Double) state_data.get("abs_th");
+                    }
+                    if(state_data!=null &&state_data.containsKey("rel_th")&&state_data.get("rel_th")!=null)
+                    {
+                        rel_th=(Double) state_data.get("rel_th");
+                    }
+                    updateTargetResult(state, nodeInfo, rel_th, abs_th, result_for_target, state2probability);
+                }
+
+            }
+            result.put(names,result_for_target);
+            /* TODO:test!!!!*/
+            /*StateProbabilityCalculator_UnBB prob_calc_unbb = (StateProbabilityCalculator_UnBB) prob_calc;
+            String outFile = modelFilePath.replace(".net", "_new.net");
+            prob_calc_unbb.save(outFile);*/
+        }
+        System.out.println("------------results-------------------");
+        System.out.println(result);
+    }
+
+    private static void updateTargetResult(String state, NodeInfo nodeInfo, Double default_rel_th, Double default_abs_th, Map<String, Double> result_for_target, Map<String, Double> state2probability)
+    {
+        double p1 = nodeInfo.getStatesProbabilities().get(state);
+        if (default_rel_th ==null && default_abs_th ==null)
+        {
+            result_for_target.put(state,p1);
+            return;
+        }
+
+        if (default_abs_th !=null)
+        {
+            if(p1< default_abs_th) return;
+        }
+        if (default_rel_th !=null)
+        {
+            double p0 = state2probability.get(state);
+            double ratio = p1/(p0+0.0000001);
+            if(ratio< default_rel_th) return;
+        }
+        result_for_target.put(state,p1);
+    }
+
+
+    private static ArrayList<HardEvidence> getHardEvidencesFromMap(Map hardEvidences)
+    {
+        ArrayList<HardEvidence> hardEvidences_arr=null;
+        if (hardEvidences !=null)
+        {
+            hardEvidences_arr=new ArrayList<>();
+            for (Object obj: hardEvidences.keySet())
+            {
+                String variableName=(String) obj;
+                String stataName=(String) hardEvidences.get(variableName);
+                HardEvidence he=new HardEvidence(variableName, stataName);
+                hardEvidences_arr.add(he);
+            }
+        }
+        return hardEvidences_arr;
+    }
+
+    private static ArrayList<SoftEvidence> getSoftEvidencesFromMap(Map softEvidences)
+    {
+        ArrayList<SoftEvidence> softEvidences_arr = null;
+        if (softEvidences != null)
+        {
+            softEvidences_arr = new ArrayList<>();
+            for (Object obj : softEvidences.keySet())
+            {
+                String variableName = (String) obj;
+                Map likelihoods = (Map) softEvidences.get(variableName);
+                SoftEvidence se = new SoftEvidence(variableName, likelihoods);
+                softEvidences_arr.add(se);
+            }
+
+        }
+        return softEvidences_arr;
+    }
+
     private String getName(int nidx)
     {
         return nodeList.get(nidx).getName();
@@ -302,94 +465,13 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
         String modelFilePath = Util.getAndTrim("model_file", configuration);
         String work_dir = Util.getAndTrim("work_dir", configuration);
         StateProbabilityCalculator prob_calc=new StateProbabilityCalculator_UnBB(modelFilePath);
+        int show_flag = SHOW_NAME | SHOW_DESCRIPTION | SHOW_EXPLANATION;
 
-        ArrayList<Map> res=parseEvJson(ev_file);
-        Map hardEvidences = res.get(0);
-        Map softEvidences = res.get(1);
-        System.out.println(String.format(">>>hardEvidences:%s", hardEvidences));
-        System.out.println(String.format(">>>softEvidences:%s", softEvidences));
-
-        int flag = SHOW_NAME | SHOW_DESCRIPTION | SHOW_EXPLANATION;
-        Map<String, NodeInfo> priori_info = prob_calc.getInfo(flag);
-        System.out.println("----priori_info--------------------");
-        StateProbabilityCalculator.printInfo(priori_info);
-        ArrayList<HardEvidence> hardEvidences_arr = getHardEvidencesFromMap(hardEvidences);
-        ArrayList<SoftEvidence> softEvidences_arr=getSoftEvidencesFromMap(softEvidences);
-        ArrayList<String> effectiveNodes = prob_calc.setEvidences(hardEvidences_arr, softEvidences_arr);
-        System.out.println(String.format("effectiveNodes: %s", effectiveNodes));
-
-        Map<String, NodeInfo> posterior_info = prob_calc.getInfo(flag);
-        System.out.println("----posterior_info--------------------");
-        StateProbabilityCalculator.printInfo(posterior_info);
-
-        for (String names:priori_info.keySet())
-        {
-            NodeInfo nodeInfo = posterior_info.get(names);
-            NodeInfo priorNodeInfo = priori_info.get(names);
-            System.out.println("---current---" + nodeInfo);
-            System.out.println("---prior-----" + priorNodeInfo);
-            double max_abs_difference = 0;
-            double min_abs_difference = 0;
-            String state_max = null;
-            String state_min = null;
-            Map<String, Double> state2probability = priorNodeInfo.getStatesProbabilities();
-            for (String state : state2probability.keySet())
-            {
-                double p1 = state2probability.get(state);
-                double p0 = nodeInfo.getStatesProbabilities().get(state);
-                double delta = p1 - p0;
-                if (delta < min_abs_difference)
-                {
-                    min_abs_difference = delta;
-                    state_min = state;
-                }
-                if (delta > max_abs_difference)
-                {
-                    max_abs_difference = delta;
-                    state_max = state;
-                }
-
-
-            }
-            System.out.println(String.format("===diff=== max: %f (%s); min: %f (%s)", max_abs_difference, state_max, min_abs_difference, state_min));
-        }
+        processInputFile(ev_file, prob_calc, show_flag);
 
     }
 
 
 
-    private static ArrayList<HardEvidence> getHardEvidencesFromMap(Map hardEvidences)
-    {
-        ArrayList<HardEvidence> hardEvidences_arr=null;
-        if (hardEvidences !=null)
-        {
-            hardEvidences_arr=new ArrayList<>();
-            for (Object obj: hardEvidences.keySet())
-            {
-                String variableName=(String) obj;
-                String stataName=(String) hardEvidences.get(variableName);
-                HardEvidence he=new HardEvidence(variableName, stataName);
-                hardEvidences_arr.add(he);
-            }
-        }
-        return hardEvidences_arr;
-    }
 
-    private static ArrayList<SoftEvidence> getSoftEvidencesFromMap(Map softEvidences)
-    {
-        ArrayList<SoftEvidence> softEvidences_arr = null;
-        if (softEvidences != null)
-        {
-            softEvidences_arr = new ArrayList<>();
-            for (Object obj : softEvidences.keySet())
-            {
-                String variableName = (String) obj;
-                Map likelihoods = (Map) softEvidences.get(variableName);
-                SoftEvidence se = new SoftEvidence(variableName, likelihoods);
-                softEvidences_arr.add(se);
-            }
-
-        }
-        return softEvidences_arr;
-    }
 }
