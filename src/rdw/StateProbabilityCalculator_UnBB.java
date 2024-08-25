@@ -272,12 +272,7 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
        new NetIO().save(new File(outFile), net);
     }*/
 
-    //------private
-
-
-//----------------------------------private methods----------------------------------
-
-    private static void processInputFile(String ev_file, StateProbabilityCalculator prob_calc, int show_flag) throws IOException, ParseException
+    public static void processInputFile(String ev_file, StateProbabilityCalculator prob_calc, int show_flag) throws IOException, ParseException
     {
         ArrayList<Map> res=parseEvJson(ev_file);
         Map hardEvidences = res.get(0);
@@ -368,6 +363,29 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
         System.out.println("------------results-------------------");
         System.out.println(result);
     }
+
+    public static void processAllInputFiles(String work_dir, StateProbabilityCalculator prob_calc, int show_flag) throws IOException, ParseException
+    {
+        String PREF_EV = "ev_";
+        String SUFFIX= ".json";
+
+        log_algo.info(String.format("processing all input files in directory::%s", work_dir));
+        File directory = new File(work_dir);
+        Util.FilenameFilterPrefSuf filenameFilterPrefSuf = new Util.FilenameFilterPrefSuf(PREF_EV, SUFFIX);
+        String[] fileNames = directory.list(filenameFilterPrefSuf);
+        for (String evidenceFileName : fileNames)
+        {
+            System.out.println("+++++++++++++++++++++++++++");
+            String inFilePath = work_dir + File.separator + evidenceFileName;
+            processInputFile(inFilePath, prob_calc, show_flag);
+            String msg = String.format("processed input file:%s", inFilePath);
+            log_algo.info(msg);
+            System.out.println("====================="+msg);
+        }
+    }
+
+//----------------------------------private methods----------------------------------
+
 
     private static void updateTargetResult(String state, NodeInfo nodeInfo, Double default_rel_th, Double default_abs_th, Map<String, Double> result_for_target, Map<String, Double> state2probability)
     {
@@ -484,25 +502,7 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
 
     }
 
-    private static void processAllInputFiles(String work_dir, StateProbabilityCalculator prob_calc, int show_flag) throws IOException, ParseException
-    {
-        String PREF_EV = "ev_";
-        String SUFFIX= ".json";
 
-        log_algo.info(String.format("processing all input files in directory::%s", work_dir));
-        File directory = new File(work_dir);
-        Util.FilenameFilterPrefSuf filenameFilterPrefSuf = new Util.FilenameFilterPrefSuf(PREF_EV, SUFFIX);
-        String[] fileNames = directory.list(filenameFilterPrefSuf);
-        for (String evidenceFileName : fileNames)
-        {
-            System.out.println("+++++++++++++++++++++++++++");
-            String inFilePath = work_dir + File.separator + evidenceFileName;
-            processInputFile(inFilePath, prob_calc, show_flag);
-            String msg = String.format("processed input file:%s", inFilePath);
-            log_algo.info(msg);
-            System.out.println("====================="+msg);
-        }
-    }
 
 
 }
