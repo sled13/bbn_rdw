@@ -1,17 +1,10 @@
 package rdw;
 
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-import unbbayes.prs.Node;
-import unbbayes.prs.bn.ProbabilisticNode;
-
-import java.io.FileReader;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Map;
 
 import static rdw.Util.map2str;
-import static rdw.Util.parseEvJson;
+import static rdw.BbnProcessor.parseEvJson;
 
 public interface StateProbabilityCalculator
 {
@@ -76,12 +69,14 @@ public interface StateProbabilityCalculator
     public ArrayList<String> setEvidences(ArrayList<HardEvidence> hardEvidences,ArrayList<SoftEvidence> softEvidences,
                                           boolean reset_before);
     public Map<String,NodeInfo> getInfo(int flag,boolean reset_before);
-    public static void printInfo(Map<String,NodeInfo> info)
+    public static StringBuffer printInfo(Map<String,NodeInfo> info)
     {
+        StringBuffer stringBuffer = new StringBuffer();
         for (String node_name:info.keySet())
         {
-            System.out.println(String.format("'%s' -->>%s", node_name,info.get(node_name)));
+            stringBuffer.append(String.format("'%s' -->>%s", node_name,info.get(node_name)));
         }
+        return stringBuffer;
     }
     public static void main(String[] args) throws Exception
     {
