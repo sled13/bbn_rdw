@@ -1,23 +1,60 @@
 package rdw;
 
 import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
 import java.io.File;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import static rdw.StateProbabilityCalculator.NodeInfo.*;
 
 public class BbnProcessor extends Loggable
 {
+    public static void createSourceTargetFile( String modelFilePath,String work_dir,String dest_prefix) throws IOException
+    {
+        StateProbabilityCalculator prob_calc = new StateProbabilityCalculator_UnBB(modelFilePath);
+        int show_flag = SHOW_NAME;
+        Map<String, StateProbabilityCalculator.NodeInfo> priori_info = prob_calc.getInfo(show_flag, true);
+        JSONObject result = new JSONObject();
+        Map evidences=new TreeMap();
+        Map evidences_soft=new TreeMap();
+        evidences.put("soft",evidences_soft);
+        Map targets=new TreeMap();
+        result.put("evidences",evidences);
+        result.put("targets",targets);
+        for(String name:priori_info.keySet())
+        {
+            if(name.startsWith(dest_prefix))
+            {
+                targets.put(name,null);
+            }
+            else
+            {
+                Map<String, Double> state2probability = priori_info.get(name).getStatesProbabilities();
+                /*TODO:Probably a normalization has no effect. Check additionally
+                Double maxValue= Collections.max(state2probability.values());
+                for (String state: state2probability.keySet())
+                {
+                    state2probability.put(state,state2probability.get(state)/maxValue);
+                }*/
+                evidences_soft.put(name,state2probability);
+            }
+        }
+        String res_file = "ev_all_source_target.json";
+        String resFilePath = work_dir + File.separator + res_file;
+        FileWriter file = new FileWriter(resFilePath);
+        String jsonString = result.toJSONString();
+        jsonString = jsonString.replace("{", "{\n\t").replace(",", ",\n\t");//.replace("}","\n\t}");
+        file.write(jsonString);
+        file.flush();
+        file.close();
+
+    }
     public static void main(String[] args) throws Exception
     {
+        //task_evidences-rdw.cfg
         String message1 = "BbnProcessor.main()";
         System.out.println(message1);
         String cfg_file = args[0];
@@ -27,6 +64,9 @@ public class BbnProcessor extends Loggable
         //TODO: this definition is used for logging debug only. Maybe delete??
         int show_flag = SHOW_NAME | SHOW_DESCRIPTION | SHOW_EXPLANATION;
         String modelFilePath = Util.getAndTrim("model_file", configuration);
+        String work_dir = Util.getAndTrim("work_dir", configuration);
+        /*TODO: define separate task*/
+        //createSourceTargetFile( modelFilePath,work_dir, "F");
         if (args.length > 1) //calling a ev_ file individually
         {
             //C:\\data\\radware\\bbn_work\\ev_get_priory_selected_without_filtration.json
@@ -38,19 +78,20 @@ public class BbnProcessor extends Loggable
             processInputFile(ev_file, modelFilePath, show_flag);
         } else //all file in directory are processed
         {
-            String work_dir = Util.getAndTrim("work_dir", configuration);
+
             processAllInputFiles(work_dir, modelFilePath, show_flag);
         }
+
     }
 
     public static void processInputFile(String ev_file, String modelFilePath, int show_flag) throws IOException, ParseException
     {
         StateProbabilityCalculator prob_calc = new StateProbabilityCalculator_UnBB(modelFilePath);
-        ArrayList<Map> res = parseEvJson(ev_file);
-        Map hardEvidences = res.get(0);
-        Map softEvidences = res.get(1);
-        Map targets = res.get(2);
-        Map defaults = res.get(3);
+        ArrayList<Map> evJson = Util.parseEvJson(ev_file);
+        Map hardEvidences = evJson.get(0);
+        Map softEvidences = evJson.get(1);
+        Map targets = evJson.get(2);
+        Map defaults = evJson.get(3);
 
 
         Map<String, StateProbabilityCalculator.NodeInfo> priori_info = prob_calc.getInfo(show_flag, true);
@@ -106,7 +147,6 @@ public class BbnProcessor extends Loggable
                 }
             } else
             {
-
                 Map target = (Map) targets.get(names);
                 for (Object obj1 : target.keySet())
                 {
@@ -127,11 +167,13 @@ public class BbnProcessor extends Loggable
 
             }
             result.put(names, result_for_target);
-            /* TODO:test!!!!*/
+
+            /* TODO:test!!!! to see how Ubb implements virtual evidence */
             /*StateProbabilityCalculator_UnBB prob_calc_unbb = (StateProbabilityCalculator_UnBB) prob_calc;
             String outFile = modelFilePath.replace(".net", "_new.net");
             prob_calc_unbb.save(outFile);*/
         }
+        addPerturbationSensitivity(prob_calc,evJson,result);
         System.out.println("------------results-------------------");
         System.out.println(result);
         String res_file = ev_file.replace("\\ev_", "\\res_");
@@ -142,6 +184,56 @@ public class BbnProcessor extends Loggable
         file.flush();
         file.close();
     }
+
+    private static void addPerturbationSensitivity(StateProbabilityCalculator prob_calc,ArrayList<Map> evJson, JSONObject result)
+    {
+        Map hardEvidences = evJson.get(0);
+        Map softEvidences = evJson.get(1);
+        Map targets = evJson.get(2);
+        Map defaults = evJson.get(3);
+        for(Object obj:result.keySet())
+        {
+            String varName=(String) obj;
+            Map context = (Map)result.get(varName);
+            if(context ==null ||context.size()<1)
+            {
+                long report_flag=0;
+                String state=null;
+
+                if(targets!=null &&targets.get(varName)!=null )
+                {
+                    Map target_for_name=(Map) targets.get(varName);
+                    for(Object obj1:target_for_name.keySet())
+                    {
+                        state=(String)obj1;
+                        if(target_for_name.get(state)!= null)
+                        {
+                            Map state_context=(Map) target_for_name.get(state);
+                           if(state_context.containsKey("report_flag"))
+                            report_flag=(long) state_context.get("report_flag");
+
+                        }
+                    }
+                }
+                if (state!=null&&report_flag==0&&defaults.containsKey("report_flag"))
+                {
+                    report_flag=(long) defaults.get("report_flag");
+                }
+                if (state!=null&&report_flag!=0)
+                {
+                    updateResultForFlag(prob_calc,varName,state,hardEvidences, softEvidences,context,(int)report_flag);
+                }
+            }
+
+        }
+    }
+
+    private static void updateResultForFlag(StateProbabilityCalculator probCalc, String name,String state, Map hardEvidences, Map softEvidences, Map context, int reportFlag)
+    {
+        //TODO: IMPLEMENT !!!!!!!!!!!
+        System.out.println(String.format("updateResultForFlag flag=%d; name='%s'; state='%s' --Not implemented yet!!!", reportFlag,name,state));
+    }
+
 
     public static void processAllInputFiles(String work_dir, String modelFilePath, int show_flag) throws IOException, ParseException
     {
@@ -220,69 +312,4 @@ public class BbnProcessor extends Loggable
         return softEvidences_arr;
     }
 
-    public static ArrayList<Map> parseEvJson(String ev_file) throws IOException, ParseException
-    {
-        System.out.println(String.format("----parsing file:%s", ev_file));
-        ArrayList<Map> res = new ArrayList<>();
-
-        JSONParser parser = new JSONParser();
-        JSONObject jsonObject = (JSONObject)parser.parse(new FileReader(ev_file));
-        Map hardEvidences=null;
-        Map softEvidences =null;
-        Map targets=null;
-        Map defaults =null;
-        System.out.println(jsonObject);
-        if (jsonObject.size()>0)
-        {
-            if(jsonObject.containsKey("evidences"))
-            {
-            JSONObject evidences = (JSONObject) jsonObject.get("evidences");
-            System.out.println(evidences);
-
-            if (evidences.containsKey("hard"))
-            {
-                hardEvidences = (JSONObject) evidences.get("hard");
-                for (Object obj1 : hardEvidences.keySet())
-                {
-                    String variableName = (String) obj1;
-                    String state_name = (String) hardEvidences.get(variableName);
-                    String msg = String.format("hard evidence: variable  '%s' => set state '%s'", variableName, state_name);
-                    System.out.println(msg);
-                }
-            }
-            if (evidences.containsKey("soft"))
-            {
-                softEvidences = (JSONObject) evidences.get("soft");
-                for (Object obj1 : softEvidences.keySet())
-                {
-                    String variableName = (String) obj1;
-                    Map<String, Float> likelihoods = (JSONObject) softEvidences.get(variableName);
-                    String msg = String.format("soft evidence: for variable  name=%s; likelihoods: %s", variableName, likelihoods);
-                    System.out.println(msg);
-
-                }
-            }
-
-            }
-            if (jsonObject.containsKey("targets"))
-            {
-                targets = (JSONObject) jsonObject.get("targets");
-            }
-            if (jsonObject.containsKey("defaults"))
-            {
-                defaults = (JSONObject) jsonObject.get("defaults");
-            }
-
-
-        }
-        res.add(hardEvidences);
-        res.add(softEvidences);
-        res.add(targets);
-        res.add(defaults);
-        System.out.println(String.format(">>>hardEvidences:%s", hardEvidences));
-        System.out.println(String.format(">>>softEvidences:%s", softEvidences));
-        System.out.println(String.format(">>>targets:%s", targets));
-        System.out.println(String.format(">>>defaults:%s", defaults));
-        return res;
-    }
 }

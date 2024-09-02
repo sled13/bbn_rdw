@@ -1,7 +1,10 @@
 package rdw;
 
+import org.json.simple.JSONObject;
+import org.json.simple.parser.ParseException;
 import unbbayes.io.BaseIO;
 import unbbayes.io.NetIO;
+import unbbayes.prs.INode;
 import unbbayes.prs.Node;
 import unbbayes.prs.bn.JunctionTreeAlgorithm;
 import unbbayes.prs.bn.PotentialTable;
@@ -9,6 +12,8 @@ import unbbayes.prs.bn.ProbabilisticNetwork;
 
 
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 
 
@@ -18,6 +23,7 @@ import unbbayes.util.extension.bn.inference.IInferenceAlgorithm;
 
 import java.util.Map;
 
+import static rdw.Util.parseEvJson;
 import static rdw.StateProbabilityCalculator.NodeInfo.*;
 
 public class StateProbabilityCalculator_UnBB extends Loggable implements StateProbabilityCalculator
@@ -28,6 +34,7 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
     private int netSize = 0;
     private SortedMap<String, Integer> name2index = new TreeMap<>();
     private Map<Integer, float[]> nidx2cptValues = new TreeMap<>();
+    String _modelFilePath;
 
     //int SHOW_MODE=3;
     public static class NodeInfo_UnBB implements StateProbabilityCalculator.NodeInfo
@@ -130,8 +137,10 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
         System.out.println(softEvidences);
         if (reset_before)
         {
+            initFromFile(_modelFilePath);
+            /* TODO: this does not work
             net.resetEvidences();
-            net.resetLikelihoods();
+            net.resetLikelihoods();*/
         }
         ArrayList<String> effectiveNodes = new ArrayList<>();
         if (hardEvidences != null)
@@ -223,8 +232,10 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
     {
         if (reset_before)
         {
+            initFromFile(_modelFilePath);
+            /* TODO: this does not work
             net.resetEvidences();
-            net.resetLikelihoods();
+            net.resetLikelihoods();*/
         }
         Map<String, NodeInfo> name2Info = new TreeMap<>();
         nodeList = net.getNodes();
@@ -242,6 +253,12 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
 
     public StateProbabilityCalculator_UnBB(String modelFilePath)
     {
+        _modelFilePath=modelFilePath;
+        initFromFile(_modelFilePath);
+    }
+
+    private void initFromFile(String modelFilePath)
+    {
         try
         {
             BaseIO io = new NetIO(); // open a .net file
@@ -255,14 +272,11 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
         algorithm.setNetwork(net);
         algorithm.run();
 
-        // print node's prior marginal probabilities
         nodeList = net.getNodes();
         int nidx = 0;
         for (Node node : nodeList)
         {
             NodeInfo nodeInfo = new NodeInfo_UnBB(node, SHOW_NAME);
-
-            ///name2InfoPrior.put(getName(nidx), nodeInfo);
             name2index.put(node.getName(), nidx);
             float[] cptvalues = getCptValues(node);
             nidx2cptValues.put(nidx, cptvalues);
@@ -270,6 +284,38 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
         }
         netSize = nodeList.size();
     }
+
+    @Override
+    public Map<String,Integer> getMarkovBlanket(String variableName)
+     {
+         Map<String,Integer> blanket=new TreeMap<>();
+        int id=name2index.get(variableName);
+
+         Node node = nodeList.get(id);
+         List<INode> parents = node.getParentNodes();
+         for (INode parent : parents)
+         {
+             String name = parent.getName();
+             blanket.put(name,1);
+         }
+         ArrayList<Node> cildren = node.getChildren();
+         if(cildren!=null || cildren.size()!=0)
+         {
+             for(Node node1:cildren)
+             {
+                 String name =node1.getName();
+                 blanket.put(name,2);
+                 List<INode> parents1 = node1.getParentNodes();
+                 for (INode parent1 : parents1)
+                 {
+                     String name1 = parent1.getName();
+                     if ( blanket.containsKey(name1)) continue;
+                     blanket.put(name1,3);
+                 }
+             }
+         }
+         return blanket;
+     }
     //TODO: Not for the interface. For testing mostly
     /*public void save(String outFile) throws FileNotFoundException
     {
@@ -310,8 +356,63 @@ public class StateProbabilityCalculator_UnBB extends Loggable implements StatePr
     public static void main(String[] args) throws Exception
     {
 //        TODO: test 1
-//        String work_directory="C:\\projects\\radware\\UnBBayes\\Nets-avi\\Nets";
-//        check_models_in_directory(work_directory);
+        String message1 = "MarkovBlanket-Test";
+        System.out.println(message1);
+        String cfg_file = args[0];
+        init(cfg_file);
+        log_algo.setUseParentHandlers(false);
+        log_algo.info(message1);
+        //TODO: this definition is used for logging debug only. Maybe delete??
+         String modelFilePath = Util.getAndTrim("model_file", configuration);
+         StateProbabilityCalculator prob_calc = new StateProbabilityCalculator_UnBB(modelFilePath);
+         int show_flag = SHOW_NAME ;
+        Map<String, NodeInfo> info = prob_calc.getInfo(show_flag, false);
+        /*TODO: define a test
+        System.out.println("==== TEST: Markov blanket set====");
+        for(String varName:info.keySet())
+        {
+            Map<String, Integer> mBlanket = prob_calc.getMarkovBlanket(varName);
+            System.out.println(String.format("%s ==>>%s", varName,mBlanket));
+        }*/
 
+        String work_dir = Util.getAndTrim("work_dir", configuration);
+        int max_dist=2;
+        String res_file = "ev_all_source_target.json";
+        analyzeInfluences(info, res_file, work_dir, max_dist, prob_calc);
+    }
+
+    private static void analyzeInfluences(Map<String, NodeInfo> info, String res_file, String work_dir, int max_dist, StateProbabilityCalculator prob_calc) throws IOException, ParseException
+    {
+        Set<String> source_set= info.keySet();
+        Set<String> target_set= info.keySet();
+        if (res_file !=null)
+        {
+            String resFilePath = work_dir + File.separator + res_file;
+            ArrayList<Map> res = parseEvJson(resFilePath);
+           // Map hardEvidences = res.get(0);
+            Map softEvidences = res.get(1);
+            Map targets = res.get(2);
+            //Map defaults = res.get(3);
+            source_set=softEvidences.keySet();
+            target_set=targets.keySet();
+        }
+        System.out.println(String.format("==== TEST: influencers for max distance:%s====", max_dist));
+        JSONObject result = new JSONObject();
+        for(String varName:target_set)
+        {
+            Map<String, Influence> influencers = StateProbabilityCalculator.getInfluencers(prob_calc, varName, max_dist,
+                    source_set);
+            System.out.println(String.format("%s ==>>%s", varName,influencers));
+            result.put(varName,influencers);
+
+            String influenceFilePath=  work_dir + File.separator + "influence.json";
+
+            FileWriter file = new FileWriter(influenceFilePath);
+            String jsonString = result.toJSONString();
+            jsonString = jsonString.replace("{", "{\n\t").replace(",", ",\n\t");//.replace("}","\n\t}");
+            file.write(jsonString);
+            file.flush();
+            file.close();
+        }
     }
 }

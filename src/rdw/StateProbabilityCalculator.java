@@ -1,10 +1,9 @@
 package rdw;
 
-import java.util.ArrayList;
-import java.util.Map;
+import java.util.*;
 
 import static rdw.Util.map2str;
-import static rdw.BbnProcessor.parseEvJson;
+import static rdw.Util.parseEvJson;
 
 public interface StateProbabilityCalculator
 {
@@ -77,6 +76,73 @@ public interface StateProbabilityCalculator
             stringBuffer.append(String.format("'%s' -->>%s", node_name,info.get(node_name)));
         }
         return stringBuffer;
+    }
+
+    /**
+     *
+     * @param variableName
+     * @return results.keys - is a set (of variable names) that is usually called Markov Blanket. Each name is mapped
+     * to flag 1 -'parent', 2-'child', 3- parent of child (it is not standard for Mb)
+     */
+    public Map<String,Integer> getMarkovBlanket(String variableName);
+
+    public static class Influence extends TreeMap
+    {
+        //int n_paths =1;
+        //ArrayList<Integer> shortestPath =null;
+
+        public Influence(ArrayList<Integer> path)
+        {
+            this.put("n_paths",1);
+            this.put("shortestPath", new ArrayList<>(path));
+        }
+    }
+
+    public static  Map<String,Influence> getInfluencers(StateProbabilityCalculator spc,String variableName,
+                                                        int maxDistance,Set<String> sources)
+    {
+        Map<String,Influence> influencers= new TreeMap<>();
+        Map<String,ArrayList> checkList=new TreeMap();
+        ArrayList<Integer> path0= new ArrayList<>();
+        Influence root=new Influence(path0);
+        checkList.put(variableName,(ArrayList) root.get("shortestPath"));
+        for(int dist=0; dist<maxDistance;dist++ )
+        {
+            Map<String,ArrayList> newCheckList=new TreeMap();
+            for( String name:checkList.keySet())
+            {
+                //if(name==variableName) continue;
+                ArrayList path=checkList.get(name);
+                Map<String, Integer> mb = spc.getMarkovBlanket(name);
+                for(String name1:mb.keySet())
+                {
+                    if(sources!=null &&!sources.contains(name1)) continue;
+                    if(name1==name ||name1==variableName) continue;
+                    if (influencers.containsKey(name1))
+                    {
+                        Influence influence = influencers.get(name1);
+                        influence.put("n_paths",(int)influence.get("n_paths")+1);
+                        continue;
+                    }
+                    ArrayList path1=new ArrayList(path);
+                    Integer type = mb.get(name1);
+                    path1.add(type);
+                    Influence influence1=new Influence(path1);
+                    influencers.put(name1,influence1);
+                    newCheckList.put(name1,path1);
+
+                }
+
+            }
+            if (checkList.size()<1)
+            {
+                System.out.println(String.format("Influence analysis is stopped after distance %s: nothing to do more", dist));
+                return influencers;
+            }
+            checkList=newCheckList;
+        }
+        System.out.println(String.format("Influence analysis is finished for max distance %s; not processed checkListSize:%s", maxDistance,checkList.size()));
+        return influencers;
     }
     public static void main(String[] args) throws Exception
     {
