@@ -1,5 +1,11 @@
 package rdw;
 
+import org.json.simple.JSONObject;
+import org.json.simple.parser.ParseException;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.*;
 
 import static rdw.Util.map2str;
@@ -7,6 +13,7 @@ import static rdw.Util.parseEvJson;
 
 public interface StateProbabilityCalculator
 {
+    //-start-------main functionality--(1-st stage)--------------------
     public static class HardEvidence
     {
         String _variable;
@@ -77,7 +84,7 @@ public interface StateProbabilityCalculator
         }
         return stringBuffer;
     }
-
+    //-end-------main functionality--(1-st stage)--------------------
     /**
      *
      * @param variableName
@@ -143,6 +150,40 @@ public interface StateProbabilityCalculator
         }
         System.out.println(String.format("Influence analysis is finished for max distance %s; not processed checkListSize:%s", maxDistance,checkList.size()));
         return influencers;
+    }
+    static void analyzeInfluences(Map<String, NodeInfo> info, String res_file, String work_dir, int max_dist, StateProbabilityCalculator prob_calc) throws IOException, ParseException
+    {
+        Set<String> source_set= info.keySet();
+        Set<String> target_set= info.keySet();
+        if (res_file !=null)
+        {
+            String resFilePath = work_dir + File.separator + res_file;
+            ArrayList<Map> res = parseEvJson(resFilePath);
+            // Map hardEvidences = res.get(0);
+            Map softEvidences = res.get(1);
+            Map targets = res.get(2);
+            //Map defaults = res.get(3);
+            source_set=softEvidences.keySet();
+            target_set=targets.keySet();
+        }
+        System.out.println(String.format("==== TEST: influencers for max distance:%s====", max_dist));
+        JSONObject result = new JSONObject();
+        for(String varName:target_set)
+        {
+            Map<String, Influence> influencers = StateProbabilityCalculator.getInfluencers(prob_calc, varName, max_dist,
+                    source_set);
+            System.out.println(String.format("%s ==>>%s", varName,influencers));
+            result.put(varName,influencers);
+
+            String influenceFilePath=  work_dir + File.separator + "influence.json";
+
+            FileWriter file = new FileWriter(influenceFilePath);
+            String jsonString = result.toJSONString();
+            jsonString = jsonString.replace("{", "{\n\t").replace(",", ",\n\t");//.replace("}","\n\t}");
+            file.write(jsonString);
+            file.flush();
+            file.close();
+        }
     }
     public static void main(String[] args) throws Exception
     {

@@ -12,6 +12,8 @@ import static rdw.StateProbabilityCalculator.NodeInfo.*;
 
 public class BbnProcessor extends Loggable
 {
+    static double ABS_TH_SENS = 0.40;
+    static double REL_TH_SENS = 1.20;
     public static void createSourceTargetFile( String modelFilePath,String work_dir,String dest_prefix) throws IOException
     {
         StateProbabilityCalculator prob_calc = new StateProbabilityCalculator_UnBB(modelFilePath);
@@ -221,17 +223,76 @@ public class BbnProcessor extends Loggable
                 }
                 if (state!=null&&report_flag!=0)
                 {
-                    updateResultForFlag(prob_calc,varName,state,hardEvidences, softEvidences,context,(int)report_flag);
+                    ArrayList<StateProbabilityCalculator.HardEvidence> hardEvidences_arr = getHardEvidencesFromMap(hardEvidences);
+                    ArrayList<StateProbabilityCalculator.SoftEvidence> softEvidences_arr = getSoftEvidencesFromMap(softEvidences);
+                    Map<String, StateProbabilityCalculator.NodeInfo> priori_info = prob_calc.getInfo(SHOW_NAME, true);
+                    updateResultForFlag(prob_calc,varName,state,hardEvidences_arr, softEvidences_arr,context,(int)report_flag,
+                            priori_info);
                 }
             }
 
         }
     }
 
-    private static void updateResultForFlag(StateProbabilityCalculator probCalc, String name,String state, Map hardEvidences, Map softEvidences, Map context, int reportFlag)
+    private static void updateResultForFlag(StateProbabilityCalculator prob_calc, String varName, String state,
+                                            ArrayList<StateProbabilityCalculator.HardEvidence> hardEvidences,
+                                            ArrayList<StateProbabilityCalculator.SoftEvidence> softEvidences,
+                                            Map context, int reportFlag, Map<String, StateProbabilityCalculator.NodeInfo> priori_info)
     {
-        //TODO: IMPLEMENT !!!!!!!!!!!
-        System.out.println(String.format("updateResultForFlag flag=%d; name='%s'; state='%s' --Not implemented yet!!!", reportFlag,name,state));
+        if (reportFlag==0) return; //the call was done by error!?
+        //TODO: only reportFlag==2 is implemented. IMPLEMENT !!!!!!!!!!!
+        if (reportFlag!=2)
+        {
+            String msg = "updateResultForFlag flag=%d; varName='%s'; " +
+                    "state='%s' --Not implemented yet!!! flag==2 processed instead";
+            System.out.println(String.format(msg, reportFlag,varName,state));
+            log_algo.info(msg);
+        }
+        ArrayList<StateProbabilityCalculator.HardEvidence> hardEvidences1=
+                new ArrayList<>(hardEvidences);
+        StateProbabilityCalculator.HardEvidence hv=new StateProbabilityCalculator.HardEvidence(varName,state);
+        hardEvidences1.add(hv);
+        ArrayList<String> effectiveNodes=prob_calc.setEvidences(hardEvidences1,softEvidences,true);
+        Map<String, StateProbabilityCalculator.NodeInfo> posterior_info = prob_calc.getInfo(SHOW_NAME, false);
+        for (String name : priori_info.keySet())
+        {
+            if(effectiveNodes.contains(name)) continue;
+
+            StateProbabilityCalculator.NodeInfo posterNodeInfo = posterior_info.get(name);
+            StateProbabilityCalculator.NodeInfo priorNodeInfo = priori_info.get(name);
+            log_algo.info("---checked---" + posterNodeInfo);
+            log_algo.info("---prior-----" + priorNodeInfo);
+            Map<String, Double> state2probability = priorNodeInfo.getStatesProbabilities();
+            Double maxRation=null;
+            String importantState=null;
+            Double abs_=null;
+            for (String state1:state2probability.keySet())
+            {
+                double p1=posterNodeInfo.getStatesProbabilities().get(state1);
+                if(p1 < ABS_TH_SENS)  continue;
+                double p0 = state2probability.get(state1);
+                double ratio = p1 / (p0 + 0.0000001);
+                if (ratio < REL_TH_SENS) continue;
+                if (maxRation==null ||maxRation<ratio)
+                {
+                    maxRation=ratio;
+                    importantState=state1;
+                    abs_=p1;
+                }
+                if (importantState !=null)
+                {
+                    Map dict=new TreeMap();
+                    Map details=new TreeMap();
+                    details.put("absolute",abs_);
+                    details.put("ratio",maxRation);
+                    dict.put(importantState,details);
+
+                    context.put(name,dict);
+                }
+
+            }
+        }
+
     }
 
 
@@ -313,3 +374,4 @@ public class BbnProcessor extends Loggable
     }
 
 }
+
